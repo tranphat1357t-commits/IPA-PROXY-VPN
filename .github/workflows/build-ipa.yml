@@ -116,7 +116,6 @@ jobs:
             -workspace iShadowsocksR.xcworkspace \
             -scheme iShadowsocksR \
             -configuration Release \
-            -sdk iphoneos \
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/iShadowsocksR.xcarchive" \
             CODE_SIGNING_ALLOWED=NO \
