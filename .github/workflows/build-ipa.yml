@@ -9,64 +9,109 @@ on:
 jobs:
   build:
     runs-on: macos-15
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
-      # Workflow nằm trong repo của bạn, nhưng source build lấy từ repo gốc
       - name: Checkout workflow repository
         uses: actions/checkout@v4
 
       - name: Clone source with submodules
         run: |
-          git clone --depth 1 --recurse-submodules \
-            https://github.com/ShadowsocksR-Live/iShadowsocksR.git source
+          set -e
 
-      - name: Verify submodules
+          git clone \
+            --depth 1 \
+            --recurse-submodules \
+            https://github.com/ShadowsocksR-Live/iShadowsocksR.git \
+            source
+
+          cd source
+          git submodule update --init --recursive
+
+      - name: Verify source and submodules
         working-directory: source
         run: |
+          set -e
+
+          echo "Submodule status:"
           git submodule status
+
           test -d Library/QRScanner
           test -d Library/CallbackURLKit
+          test -d Library/CocoaAsyncSocket
+          test -d Library/CocoaLumberjack
+          test -d Library/Eureka
+          test -d Library/KissXML
+          test -d Library/MMWormhole
+          test -d Library/libmaxminddb
           test -d Library/ssrNative
-          test -f overtls/build-apple.sh
+          test -d Library/yaml
 
-      - name: Install Rust tools
+          test -f overtls/build-apple.sh
+          test -f iShadowsocksR.xcworkspace/contents.xcworkspacedata
+
+      - name: Install Rust
         run: |
+          set -e
+
           rustup toolchain install stable
           rustup default stable
 
           rustup target add \
             aarch64-apple-ios \
             aarch64-apple-ios-sim \
-            x86_64-apple-ios
+            x86_64-apple-ios \
+            aarch64-apple-darwin \
+            x86_64-apple-darwin
 
           cargo install cbindgen
 
       - name: Build overTLS
-        working-directory: source
+        working-directory: source/overtls
         run: |
-          chmod +x overtls/build-apple.sh
-          ./overtls/build-apple.sh
+          set -e
 
-      - name: Verify overTLS
-        working-directory: source
+          chmod +x build-apple.sh
+          ./build-apple.sh
+
+      - name: Verify overTLS framework
         run: |
-          test -d overtls/overtls.xcframework
-          find overtls/overtls.xcframework -maxdepth 2 -type f | head
+          set -e
+
+          test -d source/overtls/overtls.xcframework
+          test -f source/overtls/overtls.xcframework/Info.plist
+
+          echo "overTLS framework created successfully:"
+          find source/overtls/overtls.xcframework -maxdepth 2 -type f | head -30
 
       - name: Install CocoaPods
         run: |
+          set -e
+
           sudo gem install cocoapods -v 1.12.1
           pod --version
 
       - name: Install Pods
         working-directory: source
         run: |
+          set -e
+
           pod install
+
+      - name: List available schemes
+        working-directory: source
+        run: |
+          set -e
+
+          xcodebuild \
+            -workspace iShadowsocksR.xcworkspace \
+            -list
 
       - name: Build archive
         working-directory: source
         run: |
+          set -e
+
           xcodebuild archive \
             -workspace iShadowsocksR.xcworkspace \
             -scheme iShadowsocksR \
@@ -79,8 +124,24 @@ jobs:
             COMPILER_INDEX_STORE_ENABLE=NO \
             IPHONEOS_DEPLOYMENT_TARGET=12.0
 
+      - name: Verify archive
+        run: |
+          set -e
+
+          test -d "$RUNNER_TEMP/iShadowsocksR.xcarchive"
+          test -d "$RUNNER_TEMP/iShadowsocksR.xcarchive/Products/Applications"
+
+          find \
+            "$RUNNER_TEMP/iShadowsocksR.xcarchive/Products/Applications" \
+            -maxdepth 1 \
+            -name "*.app" \
+            -print
+
       - name: Create unsigned IPA
         run: |
+          set -e
+
+          rm -rf "$RUNNER_TEMP/Payload"
           mkdir -p "$RUNNER_TEMP/Payload"
 
           cp -R \
@@ -88,6 +149,7 @@ jobs:
             "$RUNNER_TEMP/Payload/"
 
           cd "$RUNNER_TEMP"
+          rm -f iShadowsocksR-unsigned.ipa
           zip -r iShadowsocksR-unsigned.ipa Payload
 
       - name: Upload IPA
