@@ -15,7 +15,7 @@ jobs:
 
     steps:
       - name: Checkout workflow repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Select compatible Xcode
         run: |
@@ -108,7 +108,28 @@ jobs:
 
           # Xcode 15+ no longer ships libarclite for the old deployment
           # targets used by the legacy local libraries.
-          pod install
+          # Use CocoaPods CDN instead of cloning the deprecated multi-GB
+          # Specs.git repository.
+          sed -i '' \
+            "s#source 'https://github.com/CocoaPods/Specs.git'#source 'https://cdn.cocoapods.org/'#" \
+            Podfile
+          COCOAPODS_DISABLE_STATS=true pod install --no-repo-update
+
+      - name: Patch PSOperations for Swift concurrency
+        working-directory: source
+        run: |
+          set -e
+
+          ps_file="Pods/PSOperations/PSOperations/Operation.swift"
+          test -f "$ps_file"
+
+          # Xcode 15.4 annotates Foundation.Operation completionBlock as
+          # @Sendable; PSOperations 5.0.0 still uses the pre-Swift 6 type.
+          sed -i '' \
+            's/override open var completionBlock: (() -> Void)?/override open var completionBlock: (@Sendable () -> Void)?/' \
+            "$ps_file"
+
+          grep -n "completionBlock" "$ps_file"
 
       - name: Normalize deployment targets
         working-directory: source
