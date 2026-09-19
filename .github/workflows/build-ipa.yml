@@ -14,14 +14,24 @@ jobs:
       - name: Checkout source
         uses: actions/checkout@v4
 
+      - name: Install CocoaPods
+        run: |
+          sudo gem install cocoapods
+          pod install --repo-update
+
+      - name: Check schemes
+        run: |
+          xcodebuild -list \
+            -workspace iShadowsocksR.xcworkspace
+
       - name: Build archive
         run: |
           xcodebuild archive \
-            -project ThreeOneOSFive.xcodeproj \
-            -scheme 3105 \
+            -workspace iShadowsocksR.xcworkspace \
+            -scheme iShadowsocksR \
             -configuration Release \
             -sdk iphoneos \
-            -archivePath "$RUNNER_TEMP/ThreeOneOSFive.xcarchive" \
+            -archivePath "$RUNNER_TEMP/iShadowsocksR.xcarchive" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             COMPILER_INDEX_STORE_ENABLE=NO
@@ -30,15 +40,15 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/Payload"
 
-          cp -R "$RUNNER_TEMP/ThreeOneOSFive.xcarchive/Products/Applications/"*.app \
+          cp -R "$RUNNER_TEMP/iShadowsocksR.xcarchive/Products/Applications/"*.app \
             "$RUNNER_TEMP/Payload/"
 
           cd "$RUNNER_TEMP"
-          zip -r ThreeOneOSFive-unsigned.ipa Payload
+          zip -r iShadowsocksR-unsigned.ipa Payload
 
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: ThreeOneOSFive-IPA
-          path: ${{ runner.temp }}/ThreeOneOSFive-unsigned.ipa
+          name: iShadowsocksR-IPA
+          path: ${{ runner.temp }}/iShadowsocksR-unsigned.ipa
           if-no-files-found: error
