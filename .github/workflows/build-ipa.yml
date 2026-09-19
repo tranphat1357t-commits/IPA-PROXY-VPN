@@ -9,38 +9,82 @@ on:
 jobs:
   build:
     runs-on: macos-15
+    timeout-minutes: 45
 
     steps:
-      - name: Checkout source
+      # Workflow nằm trong repo của bạn, nhưng source build lấy từ repo gốc
+      - name: Checkout workflow repository
         uses: actions/checkout@v4
+
+      - name: Clone source with submodules
+        run: |
+          git clone --depth 1 --recurse-submodules \
+            https://github.com/ShadowsocksR-Live/iShadowsocksR.git source
+
+      - name: Verify submodules
+        working-directory: source
+        run: |
+          git submodule status
+          test -d Library/QRScanner
+          test -d Library/CallbackURLKit
+          test -d Library/ssrNative
+          test -f overtls/build-apple.sh
+
+      - name: Install Rust tools
+        run: |
+          rustup toolchain install stable
+          rustup default stable
+
+          rustup target add \
+            aarch64-apple-ios \
+            aarch64-apple-ios-sim \
+            x86_64-apple-ios
+
+          cargo install cbindgen
+
+      - name: Build overTLS
+        working-directory: source
+        run: |
+          chmod +x overtls/build-apple.sh
+          ./overtls/build-apple.sh
+
+      - name: Verify overTLS
+        working-directory: source
+        run: |
+          test -d overtls/overtls.xcframework
+          find overtls/overtls.xcframework -maxdepth 2 -type f | head
 
       - name: Install CocoaPods
         run: |
-          sudo gem install cocoapods
-          pod install --repo-update
+          sudo gem install cocoapods -v 1.12.1
+          pod --version
 
-      - name: Check schemes
+      - name: Install Pods
+        working-directory: source
         run: |
-          xcodebuild -list \
-            -workspace iShadowsocksR.xcworkspace
+          pod install
 
       - name: Build archive
+        working-directory: source
         run: |
           xcodebuild archive \
             -workspace iShadowsocksR.xcworkspace \
             -scheme iShadowsocksR \
             -configuration Release \
             -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/iShadowsocksR.xcarchive" \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
-            COMPILER_INDEX_STORE_ENABLE=NO
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            IPHONEOS_DEPLOYMENT_TARGET=12.0
 
-      - name: Create IPA
+      - name: Create unsigned IPA
         run: |
           mkdir -p "$RUNNER_TEMP/Payload"
 
-          cp -R "$RUNNER_TEMP/iShadowsocksR.xcarchive/Products/Applications/"*.app \
+          cp -R \
+            "$RUNNER_TEMP/iShadowsocksR.xcarchive/Products/Applications/"*.app \
             "$RUNNER_TEMP/Payload/"
 
           cd "$RUNNER_TEMP"
@@ -49,6 +93,6 @@ jobs:
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: iShadowsocksR-IPA
+          name: iShadowsocksR-unsigned-IPA
           path: ${{ runner.temp }}/iShadowsocksR-unsigned.ipa
           if-no-files-found: error
